@@ -26,24 +26,24 @@ export const TOKENS = {
         address: getAddress('0x912CE59144191C1204E64559FE8253a0e49E6548'),
         decimals: 18,
     },
-    GMX: {
-        address: getAddress('0xfc5A1A6EB076a2C7aD06eD22C90d7E710E35ad0a'),
-        decimals: 18,
-    },
-    MAGIC: {
-        address: getAddress('0x539bdE0d7Dbd336b79148AA742883198BBF60342'),
-        decimals: 18,
-    },
+    // GMX: {
+    //     address: getAddress('0xfc5A1A6EB076a2C7aD06eD22C90d7E710E35ad0a'),
+    //     decimals: 18,
+    // },
+    // MAGIC: {
+    //     address: getAddress('0x539bdE0d7Dbd336b79148AA742883198BBF60342'),
+    //     decimals: 18,
+    // },
 
     // DeFi токены
     UNI: {
         address: getAddress('0xFa7F8980b0f1E64A2062791cc3b0871572f1F7f0'),
         decimals: 18,
     },
-    CRV: {
-        address: getAddress('0x11cDb42B0EB46D95f990BeDD4695A6e3fA034978'),
-        decimals: 18,
-    },
+    // CRV: {
+    //     address: getAddress('0x11cDb42B0EB46D95f990BeDD4695A6e3fA034978'),
+    //     decimals: 18,
+    // },
 } as const
 
 export type TokenSymbol = keyof typeof TOKENS
