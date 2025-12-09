@@ -12,8 +12,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@flashbots/ethers-provider-bundle": "^1.0.0",
     "decimal.js": "^10.6.0",
     "dotenv": "^17.2.3",
+    "ethers": "^6.7.1",
     "ioredis": "^5.8.2",
     "viem": "^2.40.3"
   },
