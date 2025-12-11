@@ -11,17 +11,22 @@ export interface PoolConfig {
     fee: number
 }
 
-// Новый интерфейс для маршрута A -> B -> C -> A
-export interface TriadRoute {
-    route: [
-        { pool: Address, tokenIn: TokenSymbol, tokenOut: TokenSymbol, fee: number }, // A -> B
-        { pool: Address, tokenIn: TokenSymbol, tokenOut: TokenSymbol, fee: number }, // B -> C
-        { pool: Address, tokenIn: TokenSymbol, tokenOut: TokenSymbol, fee: number }  // C -> A
-    ]
+// Новый интерфейс для шага маршрута с явным указанием token0/token1
+export interface RouteLeg {
+    pool: Address
+    tokenIn: TokenSymbol
+    tokenOut: TokenSymbol
+    fee: number
+    token0: TokenSymbol
+    token1: TokenSymbol
 }
 
-// Вспомогательный Map для хранения найденных пар:
-// Key: "WETH/USDC", Value: [PoolConfig, PoolConfig, ...]
+// Интерфейс для маршрута A -> B -> C -> A
+export interface TriadRoute {
+    route: [RouteLeg, RouteLeg, RouteLeg]
+}
+
+// Вспомогательный Map для хранения найденных пар
 const poolMap = new Map<string, PoolConfig[]>()
 
 // Хеш-функция для пары, гарантирующая уникальность: A/B == B/A
@@ -31,11 +36,11 @@ function getPoolKey(tA: TokenSymbol, tB: TokenSymbol): string {
 
 async function runScanner() {
     console.log('--- 🔎 STARTING TRIAD SCANNER ---')
-    await redisClient.del(REDIS_KEYS.POOLS) // Очищаем старые пары
+    await redisClient.del(REDIS_KEYS.POOLS)
 
     const tokenSymbols = Object.keys(TOKENS) as TokenSymbol[]
 
-    // --- Шаг 1: Находим все существующие пулы (как в прошлый раз) ---
+    // --- Шаг 1: Находим все существующие пулы ---
     const allChecks: { t0: TokenSymbol, t1: TokenSymbol, fee: number, contract: any }[] = []
 
     for (let i = 0; i < tokenSymbols.length; i++) {
@@ -66,14 +71,17 @@ async function runScanner() {
             const config = allChecks[i]
             const poolKey = getPoolKey(config.t0, config.t1)
 
+            // Правильное определение token0/token1 по адресам
+            const token0Symbol = BigInt(TOKENS[config.t0].address) < BigInt(TOKENS[config.t1].address) ? config.t0 : config.t1
+            const token1Symbol = BigInt(TOKENS[config.t0].address) < BigInt(TOKENS[config.t1].address) ? config.t1 : config.t0
+
             const pool: PoolConfig = {
                 address: poolAddress,
-                token0: config.t0,
-                token1: config.t1,
+                token0: token0Symbol,
+                token1: token1Symbol,
                 fee: config.fee,
             }
 
-            // Сохраняем пулы в map для быстрого поиска по токенам
             if (!poolMap.has(poolKey)) {
                 poolMap.set(poolKey, [])
             }
@@ -95,42 +103,38 @@ async function runScanner() {
             for (const tC of tokenSymbols) {
                 if (tC === tA || tC === tB) continue
 
-                // Цепочка: A -> B -> C -> A
-                // 1. A <-> B (Pool AB)
-                // 2. B <-> C (Pool BC)
-                // 3. C <-> A (Pool CA)
-
                 const poolsAB = poolMap.get(getPoolKey(tA, tB)) || []
                 const poolsBC = poolMap.get(getPoolKey(tB, tC)) || []
                 const poolsCA = poolMap.get(getPoolKey(tC, tA)) || []
 
                 if (poolsAB.length > 0 && poolsBC.length > 0 && poolsCA.length > 0) {
-
-                    // Перебираем все возможные комбинации комиссий (100+ комбинаций)
                     for (const poolAB of poolsAB) {
                         for (const poolBC of poolsBC) {
                             for (const poolCA of poolsCA) {
-
-                                // Создаем маршрут A -> B
-                                const leg1 = {
+                                // Создаем маршрут A -> B с явным указанием token0/token1
+                                const leg1: RouteLeg = {
                                     pool: poolAB.address,
                                     tokenIn: tA,
                                     tokenOut: tB,
-                                    fee: poolAB.fee
+                                    fee: poolAB.fee,
+                                    token0: poolAB.token0,
+                                    token1: poolAB.token1
                                 }
-                                // Создаем маршрут B -> C
-                                const leg2 = {
+                                const leg2: RouteLeg = {
                                     pool: poolBC.address,
                                     tokenIn: tB,
                                     tokenOut: tC,
-                                    fee: poolBC.fee
+                                    fee: poolBC.fee,
+                                    token0: poolBC.token0,
+                                    token1: poolBC.token1
                                 }
-                                // Создаем маршрут C -> A
-                                const leg3 = {
+                                const leg3: RouteLeg = {
                                     pool: poolCA.address,
                                     tokenIn: tC,
                                     tokenOut: tA,
-                                    fee: poolCA.fee
+                                    fee: poolCA.fee,
+                                    token0: poolCA.token0,
+                                    token1: poolCA.token1
                                 }
 
                                 triads.push({ route: [leg1, leg2, leg3] })
@@ -142,21 +146,16 @@ async function runScanner() {
         }
     }
 
-    // Триады A->B->C->A и A->C->B->A будут найдены. Используем Set для хранения.
     console.log(`\n🎉 Found ${triads.length} total unique triad routes.`)
 
     // --- Шаг 3: Запись в Redis ---
     if (triads.length > 0) {
         const pipeline = redisClient.pipeline()
-
-        // Используем другой ключ для триад
         const REDIS_TRIADS_KEY = 'arb_triads_v3'
         pipeline.del(REDIS_TRIADS_KEY)
 
         const triadStrings = triads.map(t => JSON.stringify(t))
-        // Используем SADD для гарантии уникальности, хотя здесь мы уже сгенерировали уникальные маршруты
         pipeline.sadd(REDIS_TRIADS_KEY, ...triadStrings)
-
         await pipeline.exec()
         console.log(`💾 Saved ${triads.length} triads to Redis key: "${REDIS_TRIADS_KEY}"`)
     }
