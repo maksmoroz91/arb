@@ -4,6 +4,7 @@ import { POOL_ABI } from './config/abi'
 import { viemClient, redisClient } from './utils/client'
 import { TOKENS, TokenSymbol } from './config/tokens'
 import { TriadRoute, PoolConfig } from './scanner'
+Decimal.set({ precision: 60, toExpNeg: -100, toExpPos: 100 })
 
 const REDIS_TRIADS_KEY = 'arb_triads_v3'
 
@@ -45,8 +46,8 @@ async function runMonitor() {
                 const tA = leg.tokenIn;
                 const tB = leg.tokenOut;
 
-                const t0Symbol = TOKENS[tA].address < TOKENS[tB].address ? tA : tB
-                const t1Symbol = TOKENS[tA].address < TOKENS[tB].address ? tB : tA
+                const t0Symbol = BigInt(TOKENS[tA].address) < BigInt(TOKENS[tB].address) ? tA : tB
+                const t1Symbol = BigInt(TOKENS[tA].address) < BigInt(TOKENS[tB].address) ? tB : tA
 
                 poolConfigMap.set(poolKey, {
                     address: poolKey,
